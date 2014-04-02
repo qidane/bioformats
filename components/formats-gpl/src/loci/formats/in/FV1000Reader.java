@@ -2,7 +2,7 @@
  * #%L
  * OME Bio-Formats package for reading and converting biological file formats.
  * %%
- * Copyright (C) 2005 - 2013 Open Microscopy Environment:
+ * Copyright (C) 2005 - 2014 Open Microscopy Environment:
  *   - Board of Regents of the University of Wisconsin-Madison
  *   - Glencoe Software, Inc.
  *   - University of Dundee
@@ -132,7 +132,7 @@ public class FV1000Reader extends FormatReader {
   private String pixelSizeX, pixelSizeY;
   private int validBits;
   private Vector<String> illuminations;
-  private Vector<Integer> wavelengths;
+  private Vector<Double> wavelengths;
   private String pinholeSize;
   private String magnification, lensNA, objectiveName, workingDistance;
   private String creationDate;
@@ -143,6 +143,7 @@ public class FV1000Reader extends FormatReader {
     new Hashtable<Integer, String>();
   private Hashtable<Integer, String> roiFilenames =
     new Hashtable<Integer, String>();
+  private Vector<PlaneData> planes;
 
   private POIService poi;
 
@@ -342,6 +343,7 @@ public class FV1000Reader extends FormatReader {
       creationDate = null;
       lut = null;
       channels = null;
+      planes = null;
       if (lutNames != null) {
         lutNames.clear();
       }
@@ -378,9 +380,10 @@ public class FV1000Reader extends FormatReader {
     // list of associated files.
     boolean mappedOIF = !isOIB && !new File(id).getAbsoluteFile().exists();
 
-    wavelengths = new Vector<Integer>();
+    wavelengths = new Vector<Double>();
     illuminations = new Vector<String>();
     channels = new Vector<ChannelData>();
+    planes = new Vector<PlaneData>();
 
     String oifName = null;
 
@@ -494,7 +497,7 @@ public class FV1000Reader extends FormatReader {
     while (laser != null) {
       laserEnabled = laser.get("Laser Enable").equals("1");
       if (laserEnabled) {
-        wavelengths.add(new Integer(laser.get("LaserWavelength")));
+        wavelengths.add(new Double(laser.get("LaserWavelength")));
       }
 
       creationDate = laser.get("ImageCaputreDate");
@@ -520,9 +523,9 @@ public class FV1000Reader extends FormatReader {
         channel.name = guiChannel.get("CH Name");
         channel.dyeName = guiChannel.get("DyeName");
         channel.emissionFilter = guiChannel.get("EmissionDM Name");
-        channel.emWave = new Integer(guiChannel.get("EmissionWavelength"));
+        channel.emWave = new Double(guiChannel.get("EmissionWavelength"));
         channel.excitationFilter = guiChannel.get("ExcitationDM Name");
-        channel.exWave = new Integer(guiChannel.get("ExcitationWavelength"));
+        channel.exWave = new Double(guiChannel.get("ExcitationWavelength"));
         channels.add(channel);
         index++;
         guiChannel = f.getTable("GUI Channel " + index + " Parameters");
@@ -665,6 +668,7 @@ public class FV1000Reader extends FormatReader {
         tiffs.add(ii, file);
       }
 
+      PlaneData plane = new PlaneData();
       for (int dim=0; dim<NUM_DIMENSIONS; dim++) {
         IniTable axis = pty.getTable("Axis " + dim + " Parameters");
         if (axis == null) break;
@@ -678,14 +682,36 @@ public class FV1000Reader extends FormatReader {
           if (addAxis && getDimensionOrder().indexOf("Z") == -1) {
             ms0.dimensionOrder += "Z";
           }
+          plane.positionZ = Double.parseDouble(axis.get("AbsPositionValue"));
         }
         else if (dim == 4) {
           if (addAxis && getDimensionOrder().indexOf("T") == -1) {
             ms0.dimensionOrder += "T";
           }
+          // divide by 1000, as the position is in milliseconds
+          // and DeltaT is in seconds
+          plane.deltaT =
+            Double.parseDouble(axis.get("AbsPositionValue")) / 1000;
+        }
+        else if (dim == 7) {
+          try {
+            String xPos = axis.get("AbsPositionValueX");
+            if (xPos != null) {
+              plane.positionX = Double.parseDouble(xPos);
+            }
+          }
+          catch (NumberFormatException e) { }
+          try {
+            String yPos = axis.get("AbsPositionValueY");
+            if (yPos != null) {
+              plane.positionY = Double.parseDouble(yPos);
+            }
+          }
+          catch (NumberFormatException e) { }
         }
       }
       ms0.bitsPerPixel = validBits;
+      planes.add(plane);
 
       IniTable acquisition = pty.getTable("Acquisition Parameters Common");
       if (acquisition != null) {
@@ -900,7 +926,7 @@ public class FV1000Reader extends FormatReader {
 
     MetadataStore store = makeFilterMetadata();
 
-    MetadataTools.populatePixels(store, this);
+    MetadataTools.populatePixels(store, this, true);
 
     if (creationDate != null) {
       creationDate = creationDate.replaceAll("'", "");
@@ -962,6 +988,10 @@ public class FV1000Reader extends FormatReader {
       }
       store.setPixelsTimeIncrement(pixelSizeT, i);
 
+      for (int p=0; p<core.get(i).imageCount; p++) {
+        store.setPlaneDeltaT(pixelSizeT * p, i, p);
+      }
+
       // populate LogicalChannel data
 
       for (int c=0; c<core.get(i).sizeC; c++) {
@@ -993,11 +1023,11 @@ public class FV1000Reader extends FormatReader {
         MetadataTools.createLSID("LightSource", 0, channelIndex);
       store.setChannelLightSourceSettingsID(lightSourceID, 0, channelIndex);
 
-      PositiveInteger emission =
+      PositiveFloat emission =
         FormatTools.getEmissionWavelength(channel.emWave);
-      PositiveInteger excitation =
+      PositiveFloat excitation =
         FormatTools.getExcitationWavelength(channel.exWave);
-      PositiveInteger wavelength = FormatTools.getWavelength(channel.exWave);
+      PositiveFloat wavelength = FormatTools.getWavelength(channel.exWave);
 
       if (emission != null) {
         store.setChannelEmissionWavelength(emission, 0, channelIndex);
@@ -1060,7 +1090,7 @@ public class FV1000Reader extends FormatReader {
       store.setLaserLaserMedium(getLaserMedium(channel.dyeName),
         0, channelIndex);
       if (channelIndex < wavelengths.size()) {
-        PositiveInteger wave =
+        PositiveFloat wave =
           FormatTools.getWavelength(wavelengths.get(channelIndex));
         if (wave != null) {
           store.setLaserWavelength(wave, 0, channelIndex);
@@ -1100,6 +1130,15 @@ public class FV1000Reader extends FormatReader {
         filename = sanitizeFile(filename, path);
         nextROI = parseROIFile(filename, store, nextROI, i);
       }
+    }
+
+    // Populate metadata for the planes
+    for (int i=0; i<planes.size(); i++) {
+      PlaneData plane = planes.get(i);
+      store.setPlaneDeltaT(plane.deltaT, 0, i);
+      store.setPlanePositionX(plane.positionX, 0, i);
+      store.setPlanePositionY(plane.positionY, 0, i);
+      store.setPlanePositionZ(plane.positionZ, 0, i);
     }
   }
 
@@ -1616,6 +1655,7 @@ public class FV1000Reader extends FormatReader {
   private IniList getIniFile(String filename)
     throws FormatException, IOException
   {
+    LOGGER.debug("getIniFile procession: {}", filename);
     RandomAccessInputStream stream = getFile(filename);
     String data = stream.readString((int) stream.length());
     if (!data.startsWith("[")) {
@@ -1650,10 +1690,18 @@ public class FV1000Reader extends FormatReader {
     public String name;
     public String emissionFilter;
     public String excitationFilter;
-    public Integer emWave;
-    public Integer exWave;
+    public Double emWave;
+    public Double exWave;
     public String dyeName;
     public String barrierFilter;
   }
 
+  class PlaneData {
+    public Double deltaT;
+    public Double positionX;
+    public Double positionY;
+    public Double positionZ;
+  }
+
 }
+

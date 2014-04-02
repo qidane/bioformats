@@ -64,6 +64,11 @@ class Language(object):
             namespace + 'dateTime': 'Timestamp'
             }
 
+        # A global type mapping from XSD Schema elements to language model
+        # object classes.  This will cause source code generation to be
+        # skipped for this type since it's implemented natively.
+        self.model_type_map = {}
+
         # A global type mapping from XSD Schema types to base classes
         # that is used to override places in the model where we do not
         # wish subclassing to take place.
@@ -148,7 +153,7 @@ class Language(object):
         except KeyError:
             return None
 
-    def index_signature(self, name, max_occurs, level):
+    def index_signature(self, name, max_occurs, level, dummy=False):
         sig = {
             'type': name,
             }
@@ -160,10 +165,13 @@ class Language(object):
 
         return sig
 
-    def index_string(self, signature):
-        return "%s %s" % (signature['argtype'], signature['argname'])
+    def index_string(self, signature, dummy=False):
+        if dummy is False:
+            return "%s %s" % (signature['argtype'], signature['argname'])
+        else:
+            return "%s /* %s */" % (signature['argtype'], signature['argname'])
 
-    def index_argname(self, signature):
+    def index_argname(self, signature, dummy=False):
         return signature['argname']
 
 class Java(Language):
@@ -184,6 +192,9 @@ class Java(Language):
         self.primitive_type_map[namespace + 'anyURI'] = 'String'
         self.primitive_type_map[namespace + 'hexBinary'] = 'String'
 
+        self.model_type_map['MapPairs'] = None
+        self.model_type_map['M'] = None
+
         self.type_map = copy.deepcopy(self.primitive_type_map)
         self._initTypeMap()
         self.type_map['MIMEtype'] = 'String'
@@ -202,10 +213,10 @@ class Java(Language):
     def getDefaultModelBaseClass(self):
         return "AbstractOMEModelObject"
 
-    def index_signature(self, name, max_occurs, level):
+    def index_signature(self, name, max_occurs, level, dummy=False):
         """Makes a Java method signature dictionary from an index name."""
 
-        sig = super(Java, self).index_signature(name, max_occurs, level)
+        sig = super(Java, self).index_signature(name, max_occurs, level, dummy)
         sig['argtype'] = 'int'
 
         return sig
@@ -250,6 +261,9 @@ class CXX(Language):
         self.primitive_type_map[namespace + 'anyURI'] = 'std::string'
         self.primitive_type_map[namespace + 'hexBinary'] = 'std::string'
 
+        self.model_type_map['MapPairs'] = None
+        self.model_type_map['M'] = None
+
         self.type_map = copy.deepcopy(self.primitive_type_map)
         self._initTypeMap()
         self.type_map['MIMEtype'] = 'std::string'
@@ -266,12 +280,12 @@ class CXX(Language):
         self.omexml_metadata_package = "ome::xml::meta"
 
     def getDefaultModelBaseClass(self):
-        return "OMEModelObject"
+        return "detail::OMEModelObject"
 
-    def index_signature(self, name, max_occurs, level):
+    def index_signature(self, name, max_occurs, level, dummy = False):
         """Makes a C++ method signature dictionary from an index name."""
 
-        sig = super(CXX, self).index_signature(name, max_occurs, level)
+        sig = super(CXX, self).index_signature(name, max_occurs, level, dummy)
         sig['argtype'] = 'index_type'
 
         return sig

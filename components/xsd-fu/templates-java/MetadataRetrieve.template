@@ -38,7 +38,7 @@
  * #%L
  * OME-XML Java library for working with OME-XML metadata structures.
  * %%
- * Copyright (C) 2006 - 2013 Open Microscopy Environment:
+ * Copyright (C) 2006 - 2014 Open Microscopy Environment:
  *   - Massachusetts Institute of Technology
  *   - National Institutes of Health
  *   - University of Dundee
@@ -126,6 +126,8 @@ public interface MetadataRetrieve extends BaseMetadata {
   int getListAnnotationAnnotationCount(int listAnnotationIndex);
 
   int getLongAnnotationAnnotationCount(int longAnnotationIndex);
+
+  int getMapAnnotationAnnotationCount(int mapAnnotationIndex);
 
   int getTagAnnotationAnnotationCount(int tagAnnotationIndex);
 

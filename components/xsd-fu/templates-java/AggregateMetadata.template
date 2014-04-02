@@ -170,7 +170,7 @@
  * #%L
  * OME-XML Java library for working with OME-XML metadata structures.
  * %%
- * Copyright (C) 2006 - 2013 Open Microscopy Environment:
+ * Copyright (C) 2006 - 2014 Open Microscopy Environment:
  *   - Massachusetts Institute of Technology
  *   - National Institutes of Health
  *   - University of Dundee
@@ -381,6 +381,19 @@ public class AggregateMetadata implements IMetadata
         MetadataRetrieve retrieve = (MetadataRetrieve) o;
         int result =
           retrieve.getLongAnnotationAnnotationCount(longAnnotationIndex);
+        if (result >= 0) return result;
+      }
+    }
+    return -1;
+  }
+
+  public int getMapAnnotationAnnotationCount(int mapAnnotationIndex) {
+    for (Iterator iter = delegates.iterator(); iter.hasNext();) {
+      Object o = iter.next();
+      if (o instanceof MetadataRetrieve) {
+        MetadataRetrieve retrieve = (MetadataRetrieve) o;
+        int result =
+          retrieve.getMapAnnotationAnnotationCount(mapAnnotationIndex);
         if (result >= 0) return result;
       }
     }
